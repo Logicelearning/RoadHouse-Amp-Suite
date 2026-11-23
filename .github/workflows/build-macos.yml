@@ -1,0 +1,37 @@
+name: Build macOS plugin
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (universal: Apple Silicon + Intel)
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          -DROADHOUSE_COPY_AFTER_BUILD=OFF
+
+      - name: Build
+        run: cmake --build build --config Release -j 4
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          find build -name "Roadhouse.component" -prune -exec cp -R {} dist/ \;
+          find build -name "Roadhouse.vst3"      -prune -exec cp -R {} dist/ \;
+          find build -name "Roadhouse.app"       -prune -exec cp -R {} dist/ \;
+          cp scripts/Install.command dist/
+          chmod +x dist/Install.command
+          for b in dist/*.component dist/*.vst3 dist/*.app; do codesign --force --deep --sign - "$b"; done
+          ditto -c -k --keepParent dist Roadhouse-macOS.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Roadhouse-macOS
+          path: Roadhouse-macOS.zip
